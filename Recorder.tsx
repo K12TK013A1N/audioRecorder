@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, Button, StyleSheet, PermissionsAndroid, Platform, Alert } from 'react-native';
 import AudioRecorderPlayer from 'react-native-audio-recorder-player';
+import Sound from 'react-native-sound';
 
 const audioRecorderPlayer = new AudioRecorderPlayer();
 
@@ -9,11 +10,27 @@ const Recorder: React.FC = () => {
   const [playTime, setPlayTime] = useState<string>('00:00:00');
   const [duration, setDuration] = useState<string>('00:00:00');
   const [countdown, setCountdown] = useState<number | null>(null);
+  const metronomeRef = useRef<Sound | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (Platform.OS === 'android') {
       requestPermissions();
     }
+
+    // Load the metronome sound
+    metronomeRef.current = new Sound(require('./assets/tick.wav'), Sound.MAIN_BUNDLE, (error) => {
+      if (error) {
+        console.error('Failed to load metronome sound', error);
+        return;
+      }
+      console.log('Metronome sound loaded successfully');
+    });
+
+    return () => {
+      // Clean up the sound object
+      metronomeRef.current?.release();
+    };
   }, []);
 
   useEffect(() => {
@@ -49,6 +66,26 @@ const Recorder: React.FC = () => {
     }
   };
 
+  const startMetronome = () => {
+    if (metronomeRef.current) {
+      const interval = 500; // 120 BPM -> 500ms per beat
+      intervalRef.current = setInterval(() => {
+        metronomeRef.current?.play((success) => {
+          if (!success) {
+            console.error('Failed to play metronome sound');
+          }
+        });
+      }, interval);
+    }
+  };
+
+  const stopMetronome = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+
   const onStartRecord = async () => {
     try {
       const result = await audioRecorderPlayer.startRecorder();
@@ -63,6 +100,7 @@ const Recorder: React.FC = () => {
 
   const onStopRecord = async () => {
     try {
+      stopMetronome();
       const result = await audioRecorderPlayer.stopRecorder();
       audioRecorderPlayer.removeRecordBackListener();
       setRecordTime('00:00:00');
@@ -99,6 +137,7 @@ const Recorder: React.FC = () => {
 
   const startCountdown = () => {
     setCountdown(8); // Start the countdown from 8
+    startMetronome(); // Start the metronome immediately
   };
 
   return (
